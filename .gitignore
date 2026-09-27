@@ -1,0 +1,28 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+.pytest_cache/
+
+# Virtual environments
+.venv/
+
+# Environment and sensitive credential files
+.env
+profile.json
+!profile.json.example
+!.env.example
+
+# Candidate personal resumes and raw text
+Kunal_resume.txt
+*.pdf
+
+# Local runtime data, browser sessions, and databases
+data/*
+!data/.gitkeep
+
+# Sub-repositories
+portfolio/

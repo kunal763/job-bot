@@ -1,0 +1,60 @@
+{
+  "personal": {
+    "first_name": "Kunal",
+    "last_name": "Singh",
+    "email": "kunal.singh@example.com",
+    "phone": "+919876543210",
+    "location": "Bengaluru, India",
+    "linkedin_url": "https://www.linkedin.com/in/example",
+    "github_url": "https://github.com/example",
+    "portfolio_url": "https://kunalsingh.dev"
+  },
+  "career": {
+    "current_title": "Senior Software Engineer",
+    "total_years_experience": 4.5,
+    "notice_period_days": 30,
+    "current_ctc_lpa": 12.0,
+    "expected_ctc_lpa": 18.0,
+    "skills": [
+      "Python",
+      "FastAPI",
+      "Django",
+      "React",
+      "Node.js",
+      "PostgreSQL",
+      "Docker",
+      "Kubernetes",
+      "AWS",
+      "System Design",
+      "Microservices",
+      "Playwright"
+    ],
+    "summary": "Full Stack & Backend Engineer with 4.5+ years building scalable distributed microservices, APIs, and automated tools with Python, TypeScript, and Cloud Infrastructure."
+  },
+  "education": {
+    "degree": "Bachelor of Technology (B.Tech)",
+    "field_of_study": "Computer Science and Engineering",
+    "university": "National Institute of Technology",
+    "graduation_year": 2021,
+    "gpa_or_percentage": "8.4 CGPA"
+  },
+  "documents": {
+    "resume_path": "./data/sample_resume.pdf",
+    "cover_letter_path": null
+  },
+  "common_answers": {
+    "sponsorship": "No",
+    "authorized_to_work": "Yes",
+    "legally_authorized": "Yes",
+    "require_visa_sponsorship": "No",
+    "willing_to_relocate": "Yes",
+    "hybrid_or_remote": "Remote or Hybrid",
+    "notice_period": "30 days",
+    "gender": "Decline to specify",
+    "race": "Decline to specify",
+    "disability": "No, I do not have a disability",
+    "veteran_status": "I am not a protected veteran",
+    "comfortable_commuting": "Yes",
+    "immediate_joiner": "Yes (30 days notice)"
+  }
+}
