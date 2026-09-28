@@ -45,12 +45,21 @@ EOF
     # Execute inner setup script inside Ubuntu
     proot-distro login ubuntu -- bash /root/setup_job_bot_ubuntu.sh
 
-    # Setup 1-tap alias in Termux
-    ALIAS_CMD="alias jobbot=\"proot-distro login ubuntu -- bash -c 'export PATH=\\\$HOME/.local/bin:\\\$PATH; cd \\\$HOME/job-bot && uv run job-bot \\\"\\\$@\\\"'\""
-    if ! grep -q "alias jobbot=" "$HOME/.bashrc" 2>/dev/null; then
-        echo "$ALIAS_CMD" >> "$HOME/.bashrc"
-        echo "✔ Added 'jobbot' 1-tap command to your Termux shell."
-    fi
+    # Install 'jobbot' shortcut inside Ubuntu as well
+    cat << 'EOF' > "${UBUNTU_ROOT}/usr/local/bin/jobbot"
+#!/usr/bin/env bash
+export PATH="$HOME/.local/bin:$PATH"
+cd "$HOME/job-bot" && uv run job-bot "$@"
+EOF
+    chmod +x "${UBUNTU_ROOT}/usr/local/bin/jobbot"
+
+    # Setup 1-tap wrapper script in Termux $PREFIX/bin/jobbot
+    cat << 'EOF' > "$PREFIX/bin/jobbot"
+#!/data/data/com.termux/files/usr/bin/bash
+proot-distro login ubuntu -- bash -c 'export PATH=$HOME/.local/bin:$PATH; cd $HOME/job-bot && uv run job-bot "$@"' _ "$@"
+EOF
+    chmod +x "$PREFIX/bin/jobbot"
+    echo "✔ Created native 'jobbot' command in Termux ($PREFIX/bin/jobbot)."
 
     echo ""
     echo "=================================================="

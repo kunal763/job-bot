@@ -65,14 +65,30 @@ rm job_bot_phone_sync.tar.gz
 
 ## 4. Set Up 1-Tap Shortcut in Termux
 
-Type `exit` to return to the Termux home screen, then run:
+To make `jobbot` callable directly from anywhere:
 
+### Inside Ubuntu (`root@localhost:~#`):
 ```bash
-echo "alias jobbot=\"proot-distro login ubuntu -- bash -c 'export PATH=\\\$HOME/.local/bin:\\\$PATH; cd \\\$HOME/job-bot && uv run job-bot \\\"\\\$@\\\"'\"" >> ~/.bashrc
-source ~/.bashrc
+cat << 'EOF' > /usr/local/bin/jobbot
+#!/usr/bin/env bash
+export PATH="$HOME/.local/bin:$PATH"
+cd "$HOME/job-bot" && uv run job-bot "$@"
+EOF
+chmod +x /usr/local/bin/jobbot
 ```
 
-Now you have a native `jobbot` command in Termux!
+### In Termux (Outside Ubuntu, prompt ends with `$`):
+Type `exit` to return to Termux, then run:
+
+```bash
+cat << 'EOF' > $PREFIX/bin/jobbot
+#!/data/data/com.termux/files/usr/bin/bash
+proot-distro login ubuntu -- bash -c 'export PATH=$HOME/.local/bin:$PATH; cd $HOME/job-bot && uv run job-bot "$@"' _ "$@"
+EOF
+chmod +x $PREFIX/bin/jobbot
+```
+
+Now you have a native `jobbot` command that works both from Termux and from inside Ubuntu!
 
 ---
 
