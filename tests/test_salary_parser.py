@@ -66,3 +66,30 @@ def test_unlisted_salary_behavior():
 
     meets_allowed, _ = evaluate_salary("Not Disclosed", threshold_lpa=12.0, allow_unlisted=True)
     assert meets_allowed is True
+
+
+def test_parse_inr_millions_and_thousands():
+    # YC INR Millions format: ₹2M - ₹4M INR -> 20.0 LPA - 40.0 LPA
+    info = SalaryParser.parse("₹2M - ₹4M INR")
+    assert info is not None
+    assert info.min_lpa == 20.0
+    assert info.max_lpa == 40.0
+    meets, _ = evaluate_salary("₹2M - ₹4M INR", threshold_lpa=13.0)
+    assert meets is True
+
+    # ₹1.5M - ₹4M INR -> 15.0 LPA - 40.0 LPA
+    info15 = SalaryParser.parse("₹1.5M - ₹4M INR")
+    assert info15 is not None
+    assert info15.min_lpa == 15.0
+    assert info15.max_lpa == 40.0
+    meets15, _ = evaluate_salary("₹1.5M - ₹4M INR", threshold_lpa=13.0)
+    assert meets15 is True
+
+    # ₹900K INR -> 9.0 LPA (< 13.0 LPA)
+    info_k = SalaryParser.parse("₹900K INR")
+    assert info_k is not None
+    assert info_k.min_lpa == 9.0
+    assert info_k.max_lpa == 9.0
+    meets_k, _ = evaluate_salary("₹900K INR", threshold_lpa=13.0)
+    assert meets_k is False
+

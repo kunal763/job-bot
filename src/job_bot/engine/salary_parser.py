@@ -34,17 +34,80 @@ class SalaryParser:
         if lpa_match:
             return lpa_match
 
-        # 3. Monthly Rupee amounts: e.g. "₹1,00,000 - ₹1,50,000 / month", "80k - 120k / month"
+        # 3. INR Million (M) or K (Thousands): e.g. "₹2M - ₹4M INR", "₹1.5M - ₹4M", "₹900K INR"
+        inr_mk_match = cls._parse_inr_million_or_k(clean_text)
+        if inr_mk_match:
+            return inr_mk_match
+
+        # 4. Monthly Rupee amounts: e.g. "₹1,00,000 - ₹1,50,000 / month", "80k - 120k / month"
         if any(m in lowered for m in ["month", "/mo", "per month", "p.m."]):
             return cls._parse_monthly(clean_text)
 
-        # 4. Full Rupee figures: e.g. "₹12,00,000 - ₹18,00,000 / yr" or "1200000 - 1800000"
+        # 5. Full Rupee figures: e.g. "₹12,00,000 - ₹18,00,000 / yr" or "1200000 - 1800000"
         full_match = cls._parse_full_inr(clean_text)
         if full_match:
             return full_match
 
         # Fallback: couldn't confidently parse
         return SalaryInfo(raw_text=clean_text, min_lpa=None, max_lpa=None)
+
+    @classmethod
+    def _parse_inr_million_or_k(cls, text: str) -> SalaryInfo | None:
+        """Parse INR strings formatted with M (Millions) or K (Thousands), e.g. '₹2M - ₹4M INR', '₹1.5M - ₹4M INR', '₹900K INR'."""
+        if "₹" not in text and "inr" not in text.lower():
+            return None
+
+        def unit_to_lpa(num_str: str, unit_str: str) -> float:
+            val = float(num_str)
+            u = unit_str.upper()
+            if u == "M":
+                return round(val * 10.0, 2)
+            elif u == "K":
+                return round((val * 1000.0) / 100_000.0, 2)
+            return val
+
+        range_pattern = re.compile(
+            r"[₹\s]*(?P<min>\d+(?:\.\d+)?)\s*(?P<min_u>[mkMK])?\s*(?:-|to|–)\s*[₹\s]*(?P<max>\d+(?:\.\d+)?)\s*(?P<max_u>[mkMK])\s*(?:inr)?",
+            re.IGNORECASE,
+        )
+        m = range_pattern.search(text)
+        if m:
+            min_u = m.group("min_u") or m.group("max_u")
+            max_u = m.group("max_u")
+            min_lpa = unit_to_lpa(m.group("min"), min_u)
+            max_lpa = unit_to_lpa(m.group("max"), max_u)
+            return SalaryInfo(raw_text=text, min_lpa=min_lpa, max_lpa=max_lpa, currency="INR", period="annual")
+
+        single_pattern = re.compile(
+            r"[₹\s]*(?P<val>\d+(?:\.\d+)?)\s*(?P<u>[mkMK])\s*(?:inr)?",
+            re.IGNORECASE,
+        )
+        s = single_pattern.search(text)
+        if s:
+            lpa = unit_to_lpa(s.group("val"), s.group("u"))
+            return SalaryInfo(raw_text=text, min_lpa=lpa, max_lpa=lpa, currency="INR", period="annual")
+
+        # Short INR Lakhs representation: e.g. "₹25 - ₹35 INR", "₹40 INR", "₹5 - ₹15 INR"
+        # Frequently written on YC startup listings where 25 means 25 Lakhs
+        short_range = re.compile(
+            r"₹\s*(?P<min>\d+(?:\.\d+)?)\s*(?:-|to|–)\s*₹?\s*(?P<max>\d+(?:\.\d+)?)\s*inr\b",
+            re.IGNORECASE,
+        )
+        sr = short_range.search(text)
+        if sr:
+            min_v = float(sr.group("min"))
+            max_v = float(sr.group("max"))
+            if 2 <= min_v <= 250 and 2 <= max_v <= 250:
+                return SalaryInfo(raw_text=text, min_lpa=min_v, max_lpa=max_v, currency="INR", period="annual")
+
+        short_single = re.compile(r"₹\s*(?P<val>\d+(?:\.\d+)?)\s*inr\b", re.IGNORECASE)
+        ss = short_single.search(text)
+        if ss:
+            val_v = float(ss.group("val"))
+            if 2 <= val_v <= 250:
+                return SalaryInfo(raw_text=text, min_lpa=val_v, max_lpa=val_v, currency="INR", period="annual")
+
+        return None
 
     @classmethod
     def _parse_lpa_explicit(cls, text: str) -> SalaryInfo | None:

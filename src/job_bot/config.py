@@ -31,12 +31,16 @@ class BotConfig(BaseModel):
     # LLM Settings
     groq_api_key: str | None = Field(default_factory=lambda: os.getenv("GROQ_API_KEY"))
     gemini_api_key: str | None = Field(default_factory=lambda: os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    groq_model: str = Field(default_factory=lambda: os.getenv("GROQ_MODEL") or "openai/gpt-oss-120b")
+    groq_model: str = Field(default_factory=lambda: os.getenv("GROQ_MODEL") or "qwen/qwen3.8-27b")
     gemini_model: str = Field(default="gemini-2.5-flash")
 
     # Real Chrome / Session integration
     cdp_url: str | None = Field(default_factory=lambda: os.getenv("CDP_URL"))
     linkedin_cookie: str | None = Field(default_factory=lambda: os.getenv("LINKEDIN_COOKIE"))
+
+    # Telegram Bot Settings
+    telegram_bot_token: str | None = Field(default_factory=lambda: os.getenv("TELEGRAM_BOT_TOKEN"))
+    telegram_chat_id: str | None = Field(default_factory=lambda: os.getenv("TELEGRAM_CHAT_ID"))
 
 
 config = BotConfig()

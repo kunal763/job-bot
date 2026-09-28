@@ -1,29 +1,31 @@
 # 🤖 Job Bot: Autonomous Multi-Site Job Seeker & Application Agent
 
-An intelligent, modular automation system that periodically scans job boards (starting with **LinkedIn Easy Apply**), filters listings based on strict criteria (minimum **12–13 LPA** salary and tech stack alignment), and autonomously fills out application forms using a localized profile vault and LLM assistance for custom application questions.
+An intelligent, modular automation system that scans startup and tech job platforms (**LinkedIn**, **Wellfound / AngelList**, and **Y Combinator's Work at a Startup**), filters listings based on strict criteria (minimum **12–13+ LPA** salary and tech stack alignment), and autonomously applies with AI-tailored pitches and form filling.
 
 ---
 
 ## 🏗️ System Architecture
 
 ```text
-[ Job Sources: LinkedIn Easy Apply ] 
-                 │
-                 ▼
+[ Job Sources: LinkedIn Easy Apply | Wellfound | Y Combinator (Work at a Startup) ] 
+                                      │
+                                      ▼
 [ Ingestion & Filtering Engine ] ────────(Saves match)────────> [ SQLite Database: job_bot.db ]
-  • Regex Salary Normalizer (12+ LPA)                                    │
-  • Deduplication layer                                                  │
-                 │                                                       │
-                 ▼                                                       ▼
+  • Regex Salary Normalizer (13+ LPA)                                    │
+  • INR Millions, Lakhs, USD Conversion                                  │
+  • Deduplication & Tech Stack Matcher                                    │
+                                      │                                  │
+                                      ▼                                  ▼
 [ Profile Vault: profile.json ] ─────────────────────────> [ Form Filling Engine ]
-  • Personal / Contact Info                                  • Multi-step modal stepper
-  • Experience & CTC fields                                  • Smart Label-to-input mapper
+  • Personal / Contact Info                                  • LinkedIn Easy Apply stepper
+  • Experience & CTC fields                                  • Wellfound Quick Apply
+  • Portfolio: kunal763.github.io                            • YC founder pitch note & ATS filler
   • Resume PDF attachment                                    • Dry-run safety mode
                                                                          │
                                                                          ▼
                                                            [ AI Copilot: Groq / Gemini ]
                                                              • Subjective form questions
-                                                             • Experience heuristics
+                                                             • Founder pitch generation
                                                              • Question-Answer Caching
 ```
 
@@ -31,110 +33,79 @@ An intelligent, modular automation system that periodically scans job boards (st
 
 ## ⚡ Core Features
 
-1. **Strict 12+ LPA Salary Normalization:**
-   - Multi-format regex engine handles:
-     - `12 - 18 LPA`, `15 Lacs P.A.`, `₹15,00,000 / year`
-     - Monthly conversions: `₹1,00,000 / month` $\to$ `12.0 LPA`
-     - USD conversion: `$100k / year` $\to$ `~86.0 LPA`
-   - Configurable minimum threshold (`MIN_SALARY_LPA=12.0`) and unlisted salary policy.
+1. **Multi-Platform Startup Integration:**
+   - **Y Combinator (Work at a Startup):** Direct search across YC batch companies, salary range parsing, external ATS detection (Greenhouse/Lever/Ashby), and AI-generated pitches to founders.
+   - **Wellfound (AngelList Talent):** Role-slug discovery, salary parsing, relocation handling, and autonomous Quick Apply modal completion.
+   - **LinkedIn Easy Apply:** Automated modal traversal, question answering, and resume attachment.
 
-2. **Persistent Browser Session (No Frequent Logins):**
-   - Uses Playwright persistent browser contexts in `data/browser_context/`.
-   - Log in once with `job-bot login`, and session cookies are preserved across all subsequent runs.
-   - Built-in stealth flags (`navigator.webdriver` removal, realistic user agent).
+2. **Strict 13+ LPA Salary Normalization:**
+   - Handles multi-format salary standards:
+     - YC INR Millions: `₹2M - ₹4M INR` $\to$ `20.0 - 40.0 LPA`
+     - YC Short INR: `₹25 - ₹35 INR` $\to$ `25.0 - 35.0 LPA`
+     - Explicit Lakhs: `12 - 18 LPA`, `15 Lacs P.A.`, `₹15,00,000 / year`
+     - Monthly: `₹1,00,000 / month` $\to$ `12.0 LPA`
+     - Global USD: `$90K - $130K` $\to$ `77.4 - 111.8 LPA`
 
-3. **Smart Label-to-Input Form Filler:**
-   - Heuristically maps text inputs, dropdown selects, textareas, and radio buttons.
-   - Automatically handles resume PDF attachment from your profile vault.
-   - **Dry Run Mode:** Traverses through every step, fills answers, and stops before the final "Submit" button to verify everything safely.
+3. **Persistent Browser Session:**
+   - Saved in `data/browser_context/`.
+   - Log in once with `uv run job-bot login --platform yc` (or `linkedin`, `wellfound`), or attach to Chrome via CDP (`--cdp`).
 
-4. **AI Copilot (Groq & Gemini Support):**
-   - Resolves dynamic or open-ended questions using Groq (`llama-3.3-70b-versatile`) or Google Gemini (`gemini-2.5-flash`).
-   - Built-in deterministic heuristics for experience, notice periods, and CTC.
-   - **QA Caching:** Previously answered questions are stored in SQLite to avoid redundant LLM queries.
-
-5. **Deduplication & Application Tracking:**
-   - Tracks listings and status (`QUEUED`, `APPLIED`, `FILTERED_OUT`, `FAILED`, `REVIEW_NEEDED`).
-   - Prevents duplicate applications to the same listing.
-
----
-
-## 🚀 Quickstart
-
-### 1. Setup Environment
-Ensure you have `uv` installed. If not, install via:
-```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-Sync project dependencies and install the CLI:
-```bash
-uv sync
-uv pip install -e .
-```
-
-### 2. Configure Profile & Keys
-Copy the example templates:
-```bash
-cp profile.json.example profile.json
-cp .env.example .env
-```
-
-1. Edit `profile.json` with your real contact info, career details, and resume PDF path.
-2. (Optional) In `.env`, add your `GROQ_API_KEY` (Free tier from [console.groq.com](https://console.groq.com)) or `GEMINI_API_KEY`.
+4. **AI Pitch Generator (Groq Llama-3.3):**
+   - Automatically writes authentic, highly tailored pitches to startup founders highlighting real engineering accomplishments.
 
 ---
 
 ## 🛠️ CLI Usage
 
-### 1. Persistent Login (One-time setup)
-Open an interactive browser to log into your LinkedIn account. Session cookies will be saved in `data/browser_context`:
+### 1. Platform Login (One-time setup)
 ```bash
-uv run job-bot login
+# Log into Y Combinator Work at a Startup
+uv run job-bot login --platform yc
+
+# Log into Wellfound
+uv run job-bot login --platform wellfound
+
+# Log into LinkedIn
+uv run job-bot login --platform linkedin
 ```
 
-### 2. Validate Profile Vault
-Verify that your profile schema is valid and your resume file exists:
+### 2. Search & Filter (>= 13 LPA)
 ```bash
-uv run job-bot profile
+# Search Y Combinator startups for Python and Backend separately
+uv run job-bot search --platform yc -k Python -k Backend -l India -m 13.0 -n 10 --separate
+
+# Search across all platforms
+uv run job-bot search --platform all -k Python -l India -m 13.0 -n 10
 ```
 
-### 3. Search & Filter (>= 12 LPA)
-Search LinkedIn Easy Apply for jobs matching your criteria:
+### 3. Apply (with Dry-Run Safety)
 ```bash
-# Search for Python Developer roles in India with >= 12 LPA
-uv run job-bot search --keyword "Python" --keyword "Backend" --location "India" --min-lpa 12.0
+# Safe dry run: verifies job details and generates tailored founder pitch
+uv run job-bot apply --platform yc --dry-run --limit 5
+
+# Live application: submits directly to YC startups
+uv run job-bot apply --platform yc --live --limit 10
 ```
 
-### 4. Apply (with Dry-Run Safety)
-Run the form filler on discovered jobs:
+### 4. End-to-End Autonomous Run
 ```bash
-# Safe dry run: validates all form fields without submitting
-uv run job-bot apply --dry-run
-
-# Live submission: submits the application
-uv run job-bot apply --live
+# Search and apply to YC startups >= 13 LPA in a single run
+uv run job-bot run --platform yc -k Python -k Backend -l India -m 13.0 -n 10 --separate --dry-run
 ```
 
-### 5. Full Autonomous Pipeline
-Run discovery, filtering, and application in a single command:
-```bash
-uv run job-bot run --keyword "Python" --location "India" --min-lpa 12.0 --dry-run
-```
-
-### 6. Track Applications & DB Stats
-Inspect tracked jobs and summary stats:
+### 5. Track Applications & DB Stats
 ```bash
 uv run job-bot db stats
-uv run job-bot db --status QUEUED
-uv run job-bot db --status APPLIED
+uv run job-bot db list --status QUEUED
+uv run job-bot db list --status APPLIED
 ```
 
 ---
 
 ## 🧪 Testing
 
-Run the automated test suite covering salary parsing, profile validation, SQLite operations, AI copilot, and DOM form filling:
+Run the full automated test suite (26 tests):
 ```bash
 uv run pytest
 ```
+

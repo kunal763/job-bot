@@ -23,6 +23,7 @@ Kunal_resume.txt
 # Local runtime data, browser sessions, and databases
 data/*
 !data/.gitkeep
+*.tar.gz
 
 # Sub-repositories
 portfolio/

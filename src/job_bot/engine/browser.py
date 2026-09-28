@@ -61,6 +61,8 @@ class BrowserManager:
             "--disable-blink-features=AutomationControlled",
             "--no-sandbox",
             "--disable-setuid-sandbox",
+            "--disable-dev-shm-usage",
+            "--disable-gpu",
             "--disable-infobars",
             "--no-first-run",
             "--no-default-browser-check",
@@ -71,11 +73,20 @@ class BrowserManager:
             f"Launching browser (headless={self.headless}, context_dir='{self.user_data_dir}')..."
         )
 
-        # Detect system Google Chrome executable
+        # Detect system Google Chrome / Chromium executable (including Ubuntu/Debian ARM64 & PRoot)
         executable_path = None
-        for path_candidate in ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome", "/usr/bin/chromium"]:
-            if Path(path_candidate).exists():
-                executable_path = path_candidate
+        for path_candidate in [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/opt/google/chrome/chrome",
+            "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            shutil.which("google-chrome"),
+            shutil.which("chromium"),
+            shutil.which("chromium-browser"),
+        ]:
+            if path_candidate and Path(path_candidate).exists():
+                executable_path = str(path_candidate)
                 break
 
         self._context = await self._playwright.chromium.launch_persistent_context(

@@ -12,7 +12,7 @@ from job_bot.config import config
 from job_bot.copilot.llm import AICopilot
 from job_bot.db.repository import JobRepository
 from job_bot.engine.browser import BrowserManager
-from job_bot.engine.platforms import LinkedInPlatform, WellfoundPlatform
+from job_bot.engine.platforms import LinkedInPlatform, WellfoundPlatform, YCombinatorPlatform
 from job_bot.engine.salary_parser import evaluate_salary
 from job_bot.models import ApplicationStatus, JobListing
 from job_bot.utils.logger import console, logger, print_jobs_table
@@ -29,7 +29,7 @@ app.add_typer(db_app, name="db")
 
 @app.command()
 def login(
-    platform: str = typer.Option("linkedin", "--platform", "-p", help="Target platform (linkedin)"),
+    platform: str = typer.Option("linkedin", "--platform", "-p", help="Target platform (linkedin, wellfound, yc)"),
     cdp: bool = typer.Option(False, "--cdp", help="Connect to already open Chrome via remote debugging (port 9222)"),
 ):
     """Open an interactive browser to log into your account and persist session cookies."""
@@ -48,14 +48,19 @@ def login(
         mgr = BrowserManager(headless=False, slow_mo=50, cdp_url="http://127.0.0.1:9222" if cdp else None)
         async with mgr:
             page = await mgr.get_page()
-            if platform.lower() == "wellfound":
+            if platform.lower() in ["wellfound", "wf"]:
                 url = "https://wellfound.com/login"
+            elif platform.lower() in ["yc", "ycombinator", "workatastartup"]:
+                url = "https://www.workatastartup.com/"
             elif platform.lower() == "linkedin":
                 url = "https://www.linkedin.com/login"
             else:
                 url = "https://www.google.com"
             logger.info(f"Navigating to {url}...")
-            await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            try:
+                await page.goto(url, wait_until="domcontentloaded", timeout=60000)
+            except Exception as e:
+                logger.warning(f"Could not load initial URL {url}: {e}. You can navigate to it manually in the opened browser window.")
 
             input("\nPress ENTER after you have logged in and reached your feed/dashboard: ")
             console.print("[green]Session saved to persistent storage![/green]")
@@ -170,7 +175,7 @@ def search(
     allow_unlisted: bool = typer.Option(config.allow_unlisted_salary, "--allow-unlisted", help="Include listings without salary"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max jobs to scrape per keyword"),
     headless: bool = typer.Option(config.headless, "--headless", help="Run browser in headless mode"),
-    platform: str = typer.Option("all", "--platform", "-p", help="Platform to search ('all', 'linkedin', 'wellfound')"),
+    platform: str = typer.Option("all", "--platform", "-p", help="Platform to search ('all', 'linkedin', 'wellfound', 'yc')"),
     separate_keywords: bool = typer.Option(True, "--separate/--combined", help="Search each keyword separately instead of joining them"),
 ):
     """Search job listings, apply salary filtering (13+ LPA), and store matches in DB."""
@@ -186,8 +191,10 @@ def search(
             plat_list = []
             if platform.lower() in ["all", "linkedin"]:
                 plat_list.append(LinkedInPlatform(page, vault_profile, copilot_instance, repo))
-            if platform.lower() in ["all", "wellfound"]:
+            if platform.lower() in ["all", "wellfound", "wf"]:
                 plat_list.append(WellfoundPlatform(page, vault_profile, copilot_instance, repo))
+            if platform.lower() in ["all", "yc", "ycombinator", "workatastartup"]:
+                plat_list.append(YCombinatorPlatform(page, vault_profile, copilot_instance, repo))
 
             all_jobs = []
             matched_jobs = []
@@ -219,7 +226,7 @@ def search(
 @app.command()
 def apply(
     job_id: Optional[str] = typer.Option(None, "--job-id", "-j", help="Specific job ID from DB to apply to"),
-    platform: Optional[str] = typer.Option(None, "--platform", "-p", help="Filter by platform ('linkedin', 'wellfound')"),
+    platform: Optional[str] = typer.Option(None, "--platform", "-p", help="Filter by platform ('linkedin', 'wellfound', 'yc')"),
     dry_run: bool = typer.Option(True, "--dry-run/--live", help="Dry run tests form filling without final submission"),
     headless: bool = typer.Option(config.headless, "--headless", help="Run browser in headless mode"),
     limit: Optional[int] = typer.Option(None, "--limit", "-n", help="Max jobs to process (default: all queued)"),
@@ -238,13 +245,20 @@ def apply(
             page = await mgr.get_page()
             linkedin_platform = LinkedInPlatform(page, profile_data, copilot, repo)
             wellfound_platform = WellfoundPlatform(page, profile_data, copilot, repo)
+            yc_platform = YCombinatorPlatform(page, profile_data, copilot, repo)
 
             if job_id:
                 apps = [a for a in repo.get_applications() if a["id"] == job_id]
             else:
                 apps = repo.get_applications(status=ApplicationStatus.QUEUED)
                 if platform:
-                    apps = [a for a in apps if a.get("platform") == platform.lower()]
+                    p_clean = platform.lower()
+                    if p_clean in ["yc", "ycombinator", "workatastartup"]:
+                        apps = [a for a in apps if a.get("platform") in ["yc", "ycombinator"]]
+                    elif p_clean in ["wellfound", "wf"]:
+                        apps = [a for a in apps if a.get("platform") in ["wellfound", "wf"]]
+                    else:
+                        apps = [a for a in apps if a.get("platform") == p_clean]
 
             if min_lpa is not None:
                 filtered_apps = []
@@ -266,12 +280,41 @@ def apply(
                 console.print(f"[yellow]No queued jobs available to apply to{target_desc}{sal_desc}. Run 'job-bot search' first![/yellow]")
                 return
 
+            # Rank jobs by selection probability
+            from job_bot.engine.matcher import JobMatcher
+            matcher = JobMatcher(profile_data)
+            ranked_results = matcher.rank_jobs(apps)
+
+            if not ranked_results:
+                console.print("[yellow]No qualified jobs passed matching filters. Run 'job-bot search' first![/yellow]")
+                return
+
             if not job_id and limit and limit > 0:
-                apps = apps[:limit]
+                ranked_results = ranked_results[:limit]
 
-            console.print(f"[bold cyan]Processing {len(apps)} job(s) (Dry Run = {dry_run})...[/bold cyan]")
+            # Display selection table
+            from rich.table import Table
+            table = Table(title=f"🎯 Top High-Probability Opportunities ({len(ranked_results)} selected)", border_style="cyan")
+            table.add_column("Rank", style="bold yellow", width=6)
+            table.add_column("Company", style="bold white", width=18)
+            table.add_column("Role", style="bold green")
+            table.add_column("Match Score", style="bold cyan", width=13)
+            table.add_column("Location & Salary", style="dim", width=30)
 
-            for a in apps:
+            for idx, (a, score) in enumerate(ranked_results, 1):
+                sal_str = a.get("salary_raw") or "Unlisted"
+                loc_str = (a.get("location") or "")[:18]
+                table.add_row(
+                    f"#{idx}",
+                    a.get("company", ""),
+                    a.get("title", ""),
+                    f"{score.total_score}/100 🔥",
+                    f"{loc_str} · {sal_str}",
+                )
+            console.print(table)
+            console.print(f"[bold cyan]Processing {len(ranked_results)} job(s) (Dry Run = {dry_run})...[/bold cyan]")
+
+            for a, score in ranked_results:
                 from job_bot.models import JobListing, SalaryInfo
                 job = JobListing(
                     id=a["id"],
@@ -285,8 +328,14 @@ def apply(
                     easy_apply=bool(a.get("easy_apply", 1)),
                 )
 
-                console.print(f"\n[bold]Targeting ({job.platform.upper()}):[/bold] {job.title} at {job.company}")
-                active_platform = wellfound_platform if job.platform == "wellfound" else linkedin_platform
+                console.print(f"\n[bold]Targeting ({job.platform.upper()}):[/bold] {job.title} at {job.company} [cyan](Score: {score.total_score}/100)[/cyan]")
+                if job.platform in ["yc", "ycombinator"]:
+                    active_platform = yc_platform
+                elif job.platform in ["wellfound", "wf"]:
+                    active_platform = wellfound_platform
+                else:
+                    active_platform = linkedin_platform
+
                 try:
                     success, message = await active_platform.apply_to_job(job, dry_run=dry_run)
                 except Exception as e:
@@ -329,7 +378,7 @@ def run(
     dry_run: bool = typer.Option(True, "--dry-run/--live", help="Dry run mode for safe form verification"),
     headless: bool = typer.Option(config.headless, "--headless", help="Run browser in headless mode"),
     limit: int = typer.Option(10, "--limit", "-n", help="Max jobs to search"),
-    platform: str = typer.Option("all", "--platform", "-p", help="Target platform ('all', 'linkedin', 'wellfound')"),
+    platform: str = typer.Option("all", "--platform", "-p", help="Target platform ('all', 'linkedin', 'wellfound', 'yc')"),
     separate_keywords: bool = typer.Option(True, "--separate/--combined", help="Search each keyword separately instead of joining them"),
 ):
     """End-to-end pipeline: search, filter (>= 13 LPA), deduplicate, and apply."""
@@ -474,6 +523,84 @@ def update_wellfound_profile_cmd(
     ))
     asyncio.run(optimize_wellfound_profile())
     console.print("[bold green]✔ Wellfound profile optimization complete![/bold green]")
+
+
+@app.command("rank")
+def rank_jobs_cmd(
+    platform: Optional[str] = typer.Option("yc", "--platform", "-p", help="Filter by platform ('yc', 'wellfound', 'linkedin')"),
+    limit: int = typer.Option(5, "--limit", "-n", help="Number of top jobs to display"),
+    min_lpa: Optional[float] = typer.Option(None, "--min-lpa", "-m", help="Minimum salary in LPA"),
+):
+    """Rank queued jobs by selection probability and fit score."""
+    repo = JobRepository()
+    vault = ProfileVault()
+    profile_data = vault.profile
+
+    apps = repo.get_applications(status=ApplicationStatus.QUEUED)
+    if platform:
+        p_clean = platform.lower()
+        if p_clean in ["yc", "ycombinator", "workatastartup"]:
+            apps = [a for a in apps if a.get("platform") in ["yc", "ycombinator"]]
+        elif p_clean in ["wellfound", "wf"]:
+            apps = [a for a in apps if a.get("platform") in ["wellfound", "wf"]]
+        else:
+            apps = [a for a in apps if a.get("platform") == p_clean]
+
+    if min_lpa is not None:
+        apps = [a for a in apps if evaluate_salary(a.get("salary_raw"), threshold_lpa=min_lpa)[0]]
+
+    from job_bot.engine.matcher import JobMatcher
+    matcher = JobMatcher(profile_data)
+    ranked = matcher.rank_jobs(apps, limit=limit)
+
+    if not ranked:
+        console.print("[yellow]No matching queued jobs found to rank. Run 'job-bot search' first![/yellow]")
+        return
+
+    from rich.table import Table
+    table = Table(title=f"🏆 Top {len(ranked)} High-Probability Roles on {platform.upper()}", border_style="cyan")
+    table.add_column("Rank", style="bold yellow", width=6)
+    table.add_column("Company", style="bold white", width=18)
+    table.add_column("Role", style="bold green")
+    table.add_column("Match Score", style="bold cyan", width=13)
+    table.add_column("Location & Salary", style="dim", width=28)
+    table.add_column("Key Advantages", style="italic")
+
+    for idx, (job, score) in enumerate(ranked, 1):
+        sal = job.get("salary_raw") or "Unlisted"
+        loc = (job.get("location") or "")[:16]
+        reasons_summary = ", ".join(score.reasons[:2])
+        table.add_row(
+            f"#{idx}",
+            job.get("company", ""),
+            job.get("title", ""),
+            f"{score.total_score}/100 🔥",
+            f"{loc} · {sal}",
+            reasons_summary,
+        )
+
+    console.print(table)
+
+
+@app.command("telegram-bot")
+def run_telegram_bot_cmd(
+    token: Optional[str] = typer.Option(None, "--token", "-t", help="Telegram Bot Token (from @BotFather)"),
+    chat_id: Optional[str] = typer.Option(None, "--chat-id", "-c", help="Your personal Telegram Chat ID"),
+):
+    """Start 24/7 Telegram Bot listener for mobile control from your phone."""
+    from job_bot.telegram_bot import TelegramJobBot
+    bot = TelegramJobBot(token=token, allowed_chat_id=chat_id)
+    if not bot.token:
+        console.print("[bold red]Error:[/bold red] TELEGRAM_BOT_TOKEN is not provided. Set it in .env or pass --token.")
+        return
+    console.print(Panel(
+        "[bold cyan]Job Bot Telegram Mobile Controller Started[/bold cyan]\n\n"
+        "• Open Telegram on your phone to interact with your bot.\n"
+        "• Send /start or tap inline buttons to rank and apply to jobs.",
+        title="🤖 Telegram Controller",
+        border_style="green",
+    ))
+    asyncio.run(bot.run_polling())
 
 
 def main():
