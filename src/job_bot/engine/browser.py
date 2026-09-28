@@ -69,25 +69,23 @@ class BrowserManager:
             "--window-size=1280,800",
         ]
 
+        # In PRoot on Android containers, add single-process flags to prevent fork/zygote crashes
+        if self._is_proot_or_android():
+            args.extend([
+                "--single-process",
+                "--no-zygote",
+            ])
+
         logger.info(
             f"Launching browser (headless={self.headless}, context_dir='{self.user_data_dir}')..."
         )
 
         # Detect system Google Chrome / Chromium executable (including Ubuntu/Debian ARM64 & PRoot)
-        executable_path = None
-        for path_candidate in [
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable",
-            "/opt/google/chrome/chrome",
-            "/usr/bin/chromium",
-            "/usr/bin/chromium-browser",
-            shutil.which("google-chrome"),
-            shutil.which("chromium"),
-            shutil.which("chromium-browser"),
-        ]:
-            if path_candidate and Path(path_candidate).exists():
-                executable_path = str(path_candidate)
-                break
+        executable_path = self._detect_browser_executable()
+        if executable_path:
+            logger.info(f"Using system browser executable: {executable_path}")
+        else:
+            logger.info("No system Chromium detected; using Playwright bundled browser.")
 
         self._context = await self._playwright.chromium.launch_persistent_context(
             user_data_dir=str(self.user_data_dir),
@@ -224,6 +222,57 @@ class BrowserManager:
                 "sameSite": "None",
             }
         ])
+
+    @staticmethod
+    def _is_proot_or_android() -> bool:
+        """Detect whether running inside an Android PRoot container or Termux."""
+        try:
+            if Path("/data/data/com.termux").exists():
+                return True
+            proc_ver_path = Path("/proc/version")
+            if proc_ver_path.exists():
+                txt = proc_ver_path.read_text().lower()
+                if "android" in txt or "lineage" in txt:
+                    return True
+        except Exception:
+            pass
+        return False
+
+    @staticmethod
+    def _is_real_browser(candidate: str | Path | None) -> bool:
+        """Verify candidate is a real binary and not Ubuntu's dummy Snap wrapper."""
+        if not candidate:
+            return False
+        p = Path(candidate)
+        if not p.is_file():
+            return False
+        try:
+            # Check if it's the Ubuntu snap stub script (<20KB text file with snap instructions)
+            if p.stat().st_size < 20000:
+                content = p.read_bytes()
+                if b"snap install" in content or b"requires the chromium snap" in content:
+                    return False
+        except Exception:
+            pass
+        return True
+
+    @classmethod
+    def _detect_browser_executable(cls) -> str | None:
+        """Detect system Google Chrome / Chromium executable, filtering out fake Snap wrappers."""
+        for path_candidate in [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/opt/google/chrome/chrome",
+            "/usr/bin/chromium",
+            shutil.which("google-chrome"),
+            shutil.which("chromium"),
+            shutil.which("google-chrome-stable"),
+            "/usr/bin/chromium-browser",
+            shutil.which("chromium-browser"),
+        ]:
+            if path_candidate and cls._is_real_browser(path_candidate):
+                return str(path_candidate)
+        return None
 
     async def __aenter__(self):
         await self.start()

@@ -25,7 +25,9 @@ proot-distro login ubuntu
 Inside the Ubuntu prompt (`root@localhost:~#`), install Python, Chromium, and `uv`:
 
 ```bash
-apt update -y && apt install -y python3 python3-pip python3-venv git curl chromium-browser poppler-utils build-essential
+apt update -y && apt install -y python3 python3-pip python3-venv git curl poppler-utils build-essential software-properties-common
+add-apt-repository ppa:xtradeb/apps -y
+apt update -y && apt install -y chromium
 curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc

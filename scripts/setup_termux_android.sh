@@ -27,7 +27,10 @@ if [ -d "/data/data/com.termux" ]; then
 set -e
 echo "📦 Installing Ubuntu packages (Python 3, Chromium, poppler)..."
 apt update -y
-apt install -y python3 python3-pip python3-venv git curl wget chromium-browser poppler-utils build-essential
+apt install -y python3 python3-pip python3-venv git curl wget poppler-utils build-essential software-properties-common
+add-apt-repository ppa:xtradeb/apps -y
+apt update -y
+apt install -y chromium
 
 # Install uv for lightning fast Python execution
 if ! command -v uv &> /dev/null && [ ! -f "$HOME/.local/bin/uv" ]; then
