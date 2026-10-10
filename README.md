@@ -57,6 +57,8 @@ An intelligent, modular automation system that scans startup and tech job platfo
 
 ## 🛠️ CLI Usage
 
+> 💡 **For the complete command reference and cheatsheet with all options and workflows, see [docs/COMMANDS.md](docs/COMMANDS.md).**
+
 ### 1. Platform Login (One-time setup)
 ```bash
 # Log into Y Combinator Work at a Startup
